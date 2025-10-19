@@ -1,5 +1,7 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import Category from '#models/kategori'
+import { createCategoryValidator, updateCategoryValidator } from '#validators/category_validator'
+import { errors as vineErrors } from '@vinejs/vine'
 
 export default class CategoriesController {
   /**
@@ -17,16 +19,45 @@ export default class CategoriesController {
   /**
    * Store a new category
    */
-  async store({ request }: HttpContext) {
-    const data = request.only(['nama'])
-    
-    // Validate required fields
-    if (!data.nama) {
-      return { error: 'Nama kategori harus diisi' }
-    }
+  async store({ request, response, session }: HttpContext) {
+    const isInertiaRequest = request.header('x-inertia') === 'true'
+    const rawData = request.only(['nama'])
 
-    const category = await Category.create(data)
-    return category
+    try {
+      const payload = await createCategoryValidator.validate(rawData)
+      const category = await Category.create(payload)
+
+      if (isInertiaRequest) {
+        session.flash('success', 'Kategori berhasil ditambahkan')
+        return response.redirect('/categories')
+      }
+
+      return response.created(category)
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        const validationErrors = error.messages.reduce<Record<string, string>>((acc, message) => {
+          acc[message.field] = message.message
+          return acc
+        }, {})
+
+        if (isInertiaRequest) {
+          return response
+            .status(422)
+            .header('X-Inertia', 'true')
+            .send({ errors: validationErrors })
+        }
+
+        return response.status(422).send({
+          message: 'Validasi gagal.',
+          errors: validationErrors,
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Gagal membuat kategori.',
+        ...(error instanceof Error ? { error: error.message } : {}),
+      })
+    }
   }
 
   /**
@@ -44,14 +75,49 @@ export default class CategoriesController {
   /**
    * Update existing category
    */
-  async update({ params, request }: HttpContext) {
-    const category = await Category.findOrFail(params.id)
-    const data = request.only(['nama'])
-    
-    category.merge(data)
-    await category.save()
-    
-    return category
+  async update({ params, request, response, session }: HttpContext) {
+    const isInertiaRequest = request.header('x-inertia') === 'true'
+    const rawData = request.only(['nama'])
+
+    try {
+      const payload = await updateCategoryValidator.validate(rawData)
+      const category = await Category.findOrFail(params.id)
+
+      category.merge(payload)
+      await category.save()
+
+      if (isInertiaRequest) {
+        session.flash('success', 'Kategori berhasil diperbarui')
+        return response.redirect('/categories')
+      }
+
+      await category.load('products')
+      return response.ok(category)
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        const validationErrors = error.messages.reduce<Record<string, string>>((acc, message) => {
+          acc[message.field] = message.message
+          return acc
+        }, {})
+
+        if (isInertiaRequest) {
+          return response
+            .status(422)
+            .header('X-Inertia', 'true')
+            .send({ errors: validationErrors })
+        }
+
+        return response.status(422).send({
+          message: 'Validasi gagal.',
+          errors: validationErrors,
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Gagal memperbarui kategori.',
+        ...(error instanceof Error ? { error: error.message } : {}),
+      })
+    }
   }
 
   /**

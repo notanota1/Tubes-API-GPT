@@ -1,5 +1,7 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import Product from '#models/produk'
+import { createProductValidator } from '#validators/product_validator'
+import { errors as vineErrors } from '@vinejs/vine'
 
 export default class ProductsController {
   /**
@@ -17,18 +19,63 @@ export default class ProductsController {
   /**
    * Store a new product
    */
-  async store({ request }: HttpContext) {
-    const data = request.only(['nama', 'merk', 'stok', 'harga', 'kategori_id'])
-    
-    // Validate required fields
-    if (!data.nama || !data.harga || !data.kategori_id) {
-      return { error: 'Nama, harga, dan kategori_id harus diisi' }
-    }
+  async store({ request, response, session }: HttpContext) {
+    const isInertiaRequest = request.header('x-inertia') === 'true'
+    const rawData = request.only(['nama', 'merk', 'stok', 'harga', 'kategori_id'])
 
-    const product = await Product.create(data)
-    await product.load('category')
-    
-    return product
+    try {
+      const normalizedData = {
+        ...rawData,
+        stok:
+          rawData.stok === undefined || rawData.stok === null || rawData.stok === ''
+            ? undefined
+            : Number(rawData.stok),
+        harga:
+          rawData.harga === undefined || rawData.harga === null || rawData.harga === ''
+            ? undefined
+            : Number(rawData.harga),
+        kategori_id:
+          rawData.kategori_id === undefined || rawData.kategori_id === null || rawData.kategori_id === ''
+            ? undefined
+            : Number(rawData.kategori_id),
+      }
+
+      const payload = await createProductValidator.validate(normalizedData)
+
+      const product = await Product.create(payload)
+      await product.load('category')
+
+      if (isInertiaRequest) {
+        session.flash('success', 'Produk berhasil ditambahkan')
+        return response.redirect('/products')
+      }
+
+      return response.created(product)
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        const validationErrors = error.messages.reduce<Record<string, string>>((acc, message) => {
+          acc[message.field] = message.message
+          return acc
+        }, {})
+
+        if (isInertiaRequest) {
+          return response
+            .status(422)
+            .header('X-Inertia', 'true')
+            .send({ errors: validationErrors })
+        }
+
+        return response.status(422).send({
+          message: 'Validasi gagal.',
+          errors: validationErrors,
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Gagal membuat produk.',
+        ...(error instanceof Error ? { error: error.message } : {}),
+      })
+    }
   }
 
   /**

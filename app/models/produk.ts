@@ -3,6 +3,8 @@ import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 import Category from './kategori.js'
 
 export default class Product extends BaseModel {
+  public static table = 'produks'
+
   @column({ isPrimary: true })
   declare id: number
 
@@ -21,6 +23,8 @@ export default class Product extends BaseModel {
   @column()
   declare kategori_id: number
 
-  @belongsTo(() => Category)
+  @belongsTo(() => Category, {
+    foreignKey: 'kategori_id',
+  })
   declare category: BelongsTo<typeof Category>
 }

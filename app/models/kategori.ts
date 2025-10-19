@@ -3,12 +3,16 @@ import type { HasMany } from '@adonisjs/lucid/types/relations'
 import Product from './produk.js'
 
 export default class Category extends BaseModel {
+  public static table = 'kategoris'
+
   @column({ isPrimary: true })
   declare id: number
 
   @column()
   declare nama: string
 
-  @hasMany(() => Product)
+  @hasMany(() => Product, {
+    foreignKey: 'kategori_id',
+  })
   declare products: HasMany<typeof Product>
 }

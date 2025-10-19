@@ -1,4 +1,6 @@
 import router from '@adonisjs/core/services/router'
+import Category from '#models/kategori'
+import Product from '#models/produk'
 
 // Public routes (tidak perlu authentication)
 router.get('/', async ({ inertia }) => {
@@ -34,7 +36,7 @@ router.group(() => {
   })
   
   // Categories UI
-  router.get('/categories', async ({ inertia, session, response }) => {
+  router.get('/categories', async ({ inertia, session, response, request }) => {
     // Check authentication manually
     const authToken = session.get('auth_token')
     const user = session.get('user')
@@ -42,14 +44,33 @@ router.group(() => {
     if (!authToken || !user) {
       return response.redirect('/login')
     }
+
+    const page = Number(request.input('page', 1))
+    const limit = Number(request.input('limit', 10))
+    const categories = await Category.query().paginate(page, limit)
     
     return inertia.render('categories/index', {
-      categories: { data: [], meta: {} }
+      categories: categories.toJSON()
     })
   })
   
+  router.get('/categories/:id/edit', async ({ inertia, session, response, params }) => {
+    const authToken = session.get('auth_token')
+    const user = session.get('user')
+    
+    if (!authToken || !user) {
+      return response.redirect('/login')
+    }
+    
+    const category = await Category.findOrFail(params.id)
+    
+    return inertia.render('categories/edit', {
+      category: category.serialize()
+    })
+  })
+    
   // Products UI
-  router.get('/products', async ({ inertia, session, response }) => {
+  router.get('/products', async ({ inertia, session, response, request }) => {
     // Check authentication manually
     const authToken = session.get('auth_token')
     const user = session.get('user')
@@ -58,9 +79,15 @@ router.group(() => {
       return response.redirect('/login')
     }
     
+    const page = Number(request.input('page', 1))
+    const limit = Number(request.input('limit', 10))
+    const products = await Product.query().preload('category').paginate(page, limit)
+    const categories = await Category.query().orderBy('nama', 'asc')
+    const categoriesList = categories.map((category) => category.serialize())
+    
     return inertia.render('products/index', {
-      products: { data: [], meta: {} },
-      categories: []
+      products: products.toJSON(),
+      categories: categoriesList
     })
   })
   
